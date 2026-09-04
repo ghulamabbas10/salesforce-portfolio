@@ -1,0 +1,36 @@
+name: Source validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON and XML files
+        shell: python
+        run: |
+          import json
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          for path in pathlib.Path('.').rglob('*.json'):
+              if '.git' not in path.parts:
+                  json.loads(path.read_text(encoding='utf-8'))
+
+          for path in pathlib.Path('.').rglob('*.xml'):
+              ET.parse(path)
+
+          print('All JSON and XML files are valid.')
+      - name: Reject committed Salesforce credentials
+        shell: bash
+        run: |
+          test ! -d .sf
+          test ! -d .sfdx
+          ! git grep -IE 'force://|sfdxAuthUrl|refresh[_-]?token|access[_-]?token' -- ':!.github/workflows/source-validation.yml'

@@ -1,40 +1,67 @@
-# Salesforce Developer Portfolio — Ghulam Abbas
+# Salesforce Developer Portfolio
 
-A small SFDX-structured repo showcasing hands-on Apex and Lightning Web Component work, built to demonstrate real Salesforce development patterns (trigger handler framework, bulkification, wire service, SLDS styling).
+A deployable Salesforce DX project demonstrating bulk-safe Apex automation and a Lightning Web Component for service teams.
 
-## What's inside
+## Features
 
-| Feature | Type | Folder |
-|---|---|---|
-| Lead Auto-Assignment | Apex Trigger + Handler + Test Class | `force-app/main/default/triggers`, `classes` |
-| Case Escalation Banner | Lightning Web Component | `force-app/main/default/lwc/caseEscalationBanner` |
+### Lead auto-assignment
 
-## 1. Lead Auto-Assignment (Apex)
+`LeadTrigger` delegates to `LeadAutoAssignmentHandler`, which routes Leads by `LeadSource`:
 
-**Business problem:** Inbound leads sat unassigned for hours because owner assignment was manual. This trigger routes new/updated leads to the correct queue based on Lead Source, in bulk-safe fashion, using a trigger-handler pattern (no logic in the trigger itself).
+| Lead Source | Queue |
+|---|---|
+| Web | Web Leads Queue |
+| Referral | Referral Leads Queue |
+| Partner | Partner Leads Queue |
 
-- `LeadTrigger.trigger` — thin trigger, delegates to handler
-- `LeadAutoAssignmentHandler.cls` — bulkified assignment logic, one SOQL query outside the loop
-- `LeadAutoAssignmentHandlerTest.cls` — bulk insert test (200 records), update test, negative-path test
+The implementation uses one SOQL query per trigger execution, performs no DML inside loops, supports batches of 200 records, and avoids changing ownership during unrelated updates.
 
-## 2. Case Escalation Banner (LWC)
+### Case escalation banner
 
-**Business problem:** Support agents were missing high-priority cases that sat open too long. This component renders a warning banner directly on the Case record page when a case is `High` priority, not `Closed`, and has been open past a configurable threshold.
+`caseEscalationBanner` uses Lightning UI API to display a warning when a Case:
 
-- Uses `@wire(getRecord)` from `lightning/uiRecordApi` — no Apex call needed for this data
-- Configurable via a single constant (`ESCALATION_THRESHOLD_HOURS`)
-- Styled with SLDS utility classes, no custom framework dependencies
+- has `High` priority;
+- is not `Closed`; and
+- has been open for at least four hours.
 
-## Tech
+The included `Case_Record_Page` places the component in the page header and activates it for desktop and mobile.
 
-Apex · Lightning Web Components · SOQL · SLDS · SFDX project structure
+## Project structure
 
-## Deploying
-
-This repo follows standard SFDX layout. To deploy to a scratch org or sandbox:
-
-```bash
-sf project deploy start --source-dir force-app
+```text
+force-app/main/default/
+|-- classes/       Apex handler and tests
+|-- triggers/      Lead trigger
+|-- lwc/           Case escalation banner
+|-- queues/        Lead queue metadata
+|-- flexipages/    Case Lightning record page
+`-- objects/Case/  Case page activation metadata
 ```
 
-Note: the queues referenced in `LeadAutoAssignmentHandler.cls` (`Web_Leads_Queue`, `Referral_Leads_Queue`, `Partner_Leads_Queue`) need to exist in the target org for owner assignment to take effect — the code degrades gracefully (no error) if they don't.
+## Prerequisites
+
+- Salesforce CLI (`sf`)
+- A Salesforce org with API access
+
+## Deploy
+
+```bash
+sf org login web --alias portfolio-org --set-default
+sf project deploy start --manifest manifest/package.xml --target-org portfolio-org
+```
+
+## Test
+
+```bash
+sf apex run test --tests LeadAutoAssignmentHandlerTest --result-format human --code-coverage --wait 10 --target-org portfolio-org
+```
+
+Manual acceptance checks:
+
+1. Create Web, Referral, and Partner Leads and confirm their queue owners.
+2. Open a High-priority, non-Closed Case older than four hours and confirm the warning banner appears.
+3. Close the Case or reduce its priority and confirm the banner disappears.
+
+## Security
+
+Salesforce CLI state and credentials (`.sf/` and `.sfdx/`) are excluded from version control. Never commit an access token or SFDX authentication URL.

@@ -1,13 +1,24 @@
 /**
  * LeadAutoAssignmentHandlerTest
  *
- * Note: for the owner-assignment assertions to be meaningful, the target org
- * needs the queues referenced in LeadAutoAssignmentHandler (Web_Leads_Queue,
- * Referral_Leads_Queue, Partner_Leads_Queue) deployed via Group/Queue metadata.
- * Tests are written to still pass and prove bulk-safety even without them.
+ * Verifies every configured source-to-queue mapping as well as bulk and update
+ * behavior. Queue metadata is part of this project and is deployed first.
  */
 @isTest
 private class LeadAutoAssignmentHandlerTest {
+
+    private static Map<String, Id> queueIds() {
+        Map<String, Id> result = new Map<String, Id>();
+        for (Group queue : [
+            SELECT Id, DeveloperName
+            FROM Group
+            WHERE Type = 'Queue'
+            AND DeveloperName IN ('Web_Leads_Queue', 'Referral_Leads_Queue', 'Partner_Leads_Queue')
+        ]) {
+            result.put(queue.DeveloperName, queue.Id);
+        }
+        return result;
+    }
 
     @isTest
     static void testBulkInsertDoesNotHitGovernorLimits() {
@@ -24,8 +35,11 @@ private class LeadAutoAssignmentHandlerTest {
         insert leads;
         Test.stopTest();
 
-        List<Lead> inserted = [SELECT Id FROM Lead WHERE LastName LIKE 'Bulk Lead%'];
+        Map<String, Id> queues = queueIds();
+        List<Lead> inserted = [SELECT Id, OwnerId FROM Lead WHERE LastName LIKE 'Bulk Lead%'];
         System.assertEquals(200, inserted.size(), 'All 200 leads should have inserted successfully');
+        System.assertEquals(queues.get('Web_Leads_Queue'), inserted[0].OwnerId,
+            'Web leads should be assigned to the Web queue');
     }
 
     @isTest
@@ -50,8 +64,10 @@ private class LeadAutoAssignmentHandlerTest {
         update ld;
         Test.stopTest();
 
-        Lead result = [SELECT Id, LeadSource FROM Lead WHERE Id = :ld.Id];
+        Lead result = [SELECT Id, LeadSource, OwnerId FROM Lead WHERE Id = :ld.Id];
         System.assertEquals('Referral', result.LeadSource, 'Lead source field should reflect the update');
+        System.assertEquals(queueIds().get('Referral_Leads_Queue'), result.OwnerId,
+            'Changing the source to Referral should assign the Referral queue');
     }
 
     @isTest
